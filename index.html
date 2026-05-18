@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>Daily Habits</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0e0e0e;
+      --surface: #1a1a1a;
+      --border: #2a2a2a;
+      --text: #e8e8e8;
+      --muted: #666;
+      --accent: #c8a96e;
+      --danger: #c0392b;
+      --radius: 12px;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      min-height: 100vh;
+      padding: 48px 20px 80px;
+      max-width: 480px;
+      margin: 0 auto;
+    }
+
+    header { margin-bottom: 36px; }
+    .date-label {
+      font-size: 12px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 4px;
+    }
+    h1 {
+      font-size: 28px;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+
+    section { margin-bottom: 36px; }
+    .section-title {
+      font-size: 11px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 10px;
+    }
+
+    /* Habits */
+    .habit-list {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .habit-item {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 15px 16px;
+      background: var(--surface);
+      border-radius: var(--radius);
+      cursor: pointer;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+      transition: opacity 0.12s;
+    }
+    .habit-item:active { opacity: 0.65; }
+
+    .habit-check {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      border: 2px solid var(--border);
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .habit-item.done .habit-check {
+      background: var(--accent);
+      border-color: var(--accent);
+    }
+    .checkmark { display: none; }
+    .habit-item.done .checkmark { display: block; }
+
+    .habit-name {
+      flex: 1;
+      font-size: 16px;
+      transition: color 0.15s;
+    }
+    .habit-item.done .habit-name {
+      color: var(--muted);
+      text-decoration: line-through;
+      text-decoration-color: var(--muted);
+    }
+
+    /* Edit mode overrides */
+    .habit-item.edit-mode { cursor: default; }
+    .habit-item.edit-mode .habit-check { display: none; }
+    .habit-item.edit-mode .habit-name {
+      text-decoration: none;
+      color: var(--text);
+    }
+
+    .remove-btn {
+      display: none;
+      background: none;
+      border: none;
+      color: var(--danger);
+      font-size: 22px;
+      line-height: 1;
+      padding: 0 2px;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .edit-active .remove-btn { display: block; }
+
+    .add-row {
+      display: none;
+      gap: 10px;
+      margin-top: 8px;
+      align-items: center;
+    }
+    .edit-active ~ #addRow,
+    #addRow.visible { display: flex; }
+
+    .add-input {
+      flex: 1;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-size: 16px;
+      padding: 13px 14px;
+      outline: none;
+    }
+    .add-input::placeholder { color: var(--muted); }
+    .add-input:focus { border-color: var(--accent); }
+
+    /* Buttons */
+    .btn {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-size: 15px;
+      padding: 13px 16px;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      transition: opacity 0.12s;
+      white-space: nowrap;
+    }
+    .btn:active { opacity: 0.65; }
+    .btn.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #0e0e0e;
+      font-weight: 600;
+    }
+    .btn.danger { border-color: var(--danger); color: var(--danger); }
+
+    .row {
+      display: flex;
+      gap: 10px;
+      margin-top: 10px;
+    }
+    .row .btn { flex: 1; text-align: center; }
+
+    /* Slider */
+    .slider-card {
+      background: var(--surface);
+      border-radius: var(--radius);
+      padding: 20px 18px 18px;
+    }
+    .slider-number {
+      text-align: center;
+      font-size: 52px;
+      font-weight: 700;
+      color: var(--accent);
+      letter-spacing: -0.04em;
+      margin-bottom: 14px;
+      line-height: 1;
+    }
+    input[type=range] {
+      -webkit-appearance: none;
+      width: 100%;
+      height: 4px;
+      border-radius: 2px;
+      background: var(--border);
+      outline: none;
+      margin-bottom: 10px;
+    }
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: var(--accent);
+      cursor: pointer;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+    }
+    input[type=range]::-moz-range-thumb {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: var(--accent);
+      cursor: pointer;
+      border: none;
+    }
+    .slider-ends {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    /* Done state */
+    .done-card {
+      background: var(--surface);
+      border-radius: var(--radius);
+      padding: 20px 18px;
+      text-align: center;
+    }
+    .done-rating {
+      font-size: 48px;
+      font-weight: 700;
+      color: var(--accent);
+      letter-spacing: -0.04em;
+      line-height: 1;
+      margin-bottom: 6px;
+    }
+    .done-sub {
+      font-size: 14px;
+      color: var(--muted);
+    }
+
+    .empty {
+      font-size: 14px;
+      color: var(--muted);
+      padding: 6px 0;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="date-label" id="dateLabel"></div>
+    <h1>Daily Habits</h1>
+  </header>
+
+  <section>
+    <div class="section-title">Habits</div>
+    <div class="habit-list" id="habitList"></div>
+    <div class="add-row" id="addRow">
+      <input class="add-input" id="addInput" type="text" placeholder="New habit…" maxlength="60" />
+      <button class="btn" onclick="addHabit()">Add</button>
+    </div>
+    <div class="row" id="editBtns">
+      <button class="btn" id="editBtn" onclick="startEdit()">Edit</button>
+      <button class="btn primary" id="saveBtn" style="display:none" onclick="confirmSave()">Save</button>
+      <button class="btn danger" id="cancelBtn" style="display:none" onclick="cancelEdit()">Cancel</button>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-title">Evening Check-In</div>
+    <div id="checkinArea"></div>
+  </section>
+
+<script>
+  const KEY_HABITS  = 'dh_habits_v1';
+  const KEY_CHECKIN = 'dh_checkin_v1';
+
+  let habits = [];
+  let editMode = false;
+  let editSnapshot = [];
+
+  /* ── utils ── */
+  const uid   = () => Math.random().toString(36).slice(2, 9);
+  const today = () => new Date().toISOString().slice(0, 10);
+  const esc   = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+  /* ── storage ── */
+  function loadHabits() {
+    const raw = localStorage.getItem(KEY_HABITS);
+    habits = raw ? JSON.parse(raw) : [
+      { id: uid(), name: 'Morning routine', done: false },
+      { id: uid(), name: 'Exercise',        done: false },
+      { id: uid(), name: 'Read',            done: false },
+    ];
+    if (!raw) persist();
+  }
+
+  function persist() {
+    localStorage.setItem(KEY_HABITS, JSON.stringify(habits));
+  }
+
+  function loadCheckin() {
+    const raw = localStorage.getItem(KEY_CHECKIN);
+    return raw ? JSON.parse(raw) : null;
+  }
+
+  function saveCheckin(rating) {
+    localStorage.setItem(KEY_CHECKIN, JSON.stringify({ date: today(), rating }));
+  }
+
+  /* Reset habits if last check-in was a previous day */
+  function maybeReset() {
+    const c = loadCheckin();
+    if (c && c.date !== today()) {
+      habits = habits.map(h => ({ ...h, done: false }));
+      persist();
+    }
+  }
+
+  /* ── render ── */
+  function renderDate() {
+    document.getElementById('dateLabel').textContent =
+      new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+  }
+
+  function renderHabits() {
+    const list = document.getElementById('habitList');
+    if (editMode) list.classList.add('edit-active');
+    else          list.classList.remove('edit-active');
+
+    if (!habits.length) {
+      list.innerHTML = '<div class="empty">No habits yet — hit Edit to add some.</div>';
+      return;
+    }
+
+    list.innerHTML = habits.map(h => `
+      <div class="habit-item${h.done ? ' done' : ''}${editMode ? ' edit-mode' : ''}"
+           ${editMode ? '' : `onclick="toggle('${h.id}')"`}
+           data-id="${h.id}">
+        <div class="habit-check">
+          <svg class="checkmark" width="12" height="9" viewBox="0 0 12 9" fill="none">
+            <path d="M1 4.5L4.5 8 11 1" stroke="#0e0e0e" stroke-width="2.2"
+                  stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <span class="habit-name">${esc(h.name)}</span>
+        <button class="remove-btn" onclick="removeHabit('${h.id}')">×</button>
+      </div>`).join('');
+  }
+
+  function renderCheckin() {
+    const area = document.getElementById('checkinArea');
+    const c    = loadCheckin();
+
+    if (c && c.date === today()) {
+      area.innerHTML = `
+        <div class="done-card">
+          <div class="done-rating">${c.rating}<span style="font-size:22px;color:var(--muted)"> / 10</span></div>
+          <div class="done-sub">Checked in. See you tomorrow.</div>
+        </div>`;
+      return;
+    }
+
+    area.innerHTML = `
+      <div class="slider-card">
+        <div class="slider-number" id="sliderVal">5</div>
+        <input type="range" id="slider" min="1" max="10" value="5" step="1"
+               oninput="document.getElementById('sliderVal').textContent=this.value" />
+        <div class="slider-ends"><span>1 — rough</span><span>10 — great</span></div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button class="btn primary" onclick="submitCheckin()">Check In</button>
+      </div>`;
+  }
+
+  /* ── interactions ── */
+  function toggle(id) {
+    habits = habits.map(h => h.id === id ? { ...h, done: !h.done } : h);
+    persist();
+    renderHabits();
+  }
+
+  function startEdit() {
+    editMode     = true;
+    editSnapshot = JSON.parse(JSON.stringify(habits));
+    document.getElementById('editBtn').style.display   = 'none';
+    document.getElementById('saveBtn').style.display   = '';
+    document.getElementById('cancelBtn').style.display = '';
+    document.getElementById('addRow').classList.add('visible');
+    renderHabits();
+  }
+
+  function confirmSave() {
+    editMode = false;
+    document.getElementById('editBtn').style.display   = '';
+    document.getElementById('saveBtn').style.display   = 'none';
+    document.getElementById('cancelBtn').style.display = 'none';
+    document.getElementById('addRow').classList.remove('visible');
+    document.getElementById('addInput').value = '';
+    persist();
+    renderHabits();
+  }
+
+  function cancelEdit() {
+    habits   = editSnapshot;
+    editMode = false;
+    document.getElementById('editBtn').style.display   = '';
+    document.getElementById('saveBtn').style.display   = 'none';
+    document.getElementById('cancelBtn').style.display = 'none';
+    document.getElementById('addRow').classList.remove('visible');
+    document.getElementById('addInput').value = '';
+    renderHabits();
+  }
+
+  function addHabit() {
+    const input = document.getElementById('addInput');
+    const name  = input.value.trim();
+    if (!name) return;
+    habits.push({ id: uid(), name, done: false });
+    input.value = '';
+    input.focus();
+    renderHabits();
+    document.getElementById('habitList').classList.add('edit-active');
+  }
+
+  document.getElementById('addInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter') addHabit();
+  });
+
+  function removeHabit(id) {
+    habits = habits.filter(h => h.id !== id);
+    renderHabits();
+    document.getElementById('habitList').classList.add('edit-active');
+  }
+
+  function submitCheckin() {
+    const rating = parseInt(document.getElementById('slider').value, 10);
+    saveCheckin(rating);
+    habits = habits.map(h => ({ ...h, done: false }));
+    persist();
+    renderHabits();
+    renderCheckin();
+  }
+
+  /* ── init ── */
+  loadHabits();
+  maybeReset();
+  renderDate();
+  renderHabits();
+  renderCheckin();
+</script>
+</body>
+</html>
