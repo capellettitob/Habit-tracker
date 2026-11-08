@@ -250,6 +250,86 @@
       color: var(--muted);
       padding: 6px 0;
     }
+
+    /* History (the memory) */
+    .hist-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+    .hist-head .section-title { margin-bottom: 0; }
+    .link-btn {
+      background: none;
+      border: none;
+      color: var(--muted);
+      font: inherit;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      padding: 4px 0 4px 12px;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .link-btn.ok { color: var(--accent); }
+    .hist-list {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .hist-item {
+      background: var(--surface);
+      border-radius: var(--radius);
+      padding: 14px 16px;
+      cursor: pointer;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .hist-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .hist-date { width: 92px; flex-shrink: 0; font-size: 15px; }
+    .hist-item.today .hist-date { color: var(--accent); font-weight: 600; }
+    .hist-dots { flex: 1; display: flex; flex-wrap: wrap; gap: 5px; }
+    .dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      border: 1.5px solid var(--border);
+    }
+    .dot.on { background: var(--accent); border-color: var(--accent); }
+    .hist-count {
+      font-size: 13px;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+    .hist-rating {
+      min-width: 30px;
+      height: 24px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      color: var(--accent);
+      font-size: 13px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .hist-rating.none { color: var(--muted); border-color: transparent; font-weight: 400; }
+    .hist-detail {
+      display: none;
+      margin-top: 12px;
+      font-size: 13px;
+      line-height: 1.6;
+      color: var(--muted);
+    }
+    .hist-detail b { color: var(--text); font-weight: 500; }
+    .hist-item.open .hist-detail { display: block; }
+    .more-btn { width: 100%; margin-top: 8px; color: var(--muted); }
   </style>
 </head>
 <body>
@@ -278,56 +358,108 @@
     <div id="checkinArea"></div>
   </section>
 
+  <section>
+    <div class="hist-head">
+      <div class="section-title">History</div>
+      <button class="link-btn" id="copyBtn" onclick="copyLog()">Copy log</button>
+    </div>
+    <div class="hist-list" id="histList"></div>
+    <button class="btn more-btn" id="moreBtn" style="display:none" onclick="showMore()">Show older days</button>
+  </section>
+
 <script>
   const KEY_HABITS  = 'dh_habits_v1';
   const KEY_CHECKIN = 'dh_checkin_v1';
+  const KEY_DAY     = 'dh_day_v1';      // which day the current ticks belong to
+  const KEY_HISTORY = 'dh_history_v1';  // one saved record per day
+  const DAY_START_HOUR = 4;             // a day runs 04:00 to 04:00, so late nights count for the evening before
+  const PAGE = 14;
 
   let habits = [];
   let editMode = false;
   let editSnapshot = [];
+  let shown = PAGE;
+  const openDays = new Set();
 
   /* ── utils ── */
-  const uid   = () => Math.random().toString(36).slice(2, 9);
-  const today = () => new Date().toISOString().slice(0, 10);
-  const esc   = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  const uid = () => Math.random().toString(36).slice(2, 9);
+  const pad = n => String(n).padStart(2, '0');
+  const ymd = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+  // Local date (not UTC), shifted so the day starts at 04:00
+  const today = () => ymd(new Date(Date.now() - DAY_START_HOUR * 3600e3));
+  const parseDay = s => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d, 12); };
+  const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+  function readJSON(key, fallback) {
+    try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : fallback; }
+    catch (e) { return fallback; }
+  }
+  function writeJSON(key, val) {
+    try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {}
+  }
 
   /* ── storage ── */
   function loadHabits() {
-    const raw = localStorage.getItem(KEY_HABITS);
-    habits = raw ? JSON.parse(raw) : [
+    const saved = readJSON(KEY_HABITS, null);
+    habits = Array.isArray(saved) ? saved : [
       { id: uid(), name: 'Morning routine', done: false },
       { id: uid(), name: 'Exercise',        done: false },
       { id: uid(), name: 'Read',            done: false },
     ];
-    if (!raw) persist();
+    if (!saved) persist();
   }
 
   function persist() {
-    localStorage.setItem(KEY_HABITS, JSON.stringify(habits));
+    writeJSON(KEY_HABITS, habits);
   }
 
   function loadCheckin() {
-    const raw = localStorage.getItem(KEY_CHECKIN);
-    return raw ? JSON.parse(raw) : null;
+    return readJSON(KEY_CHECKIN, null);
   }
 
   function saveCheckin(rating) {
-    localStorage.setItem(KEY_CHECKIN, JSON.stringify({ date: today(), rating }));
+    writeJSON(KEY_CHECKIN, { date: currentDay(), rating });
   }
 
-  /* Reset habits if last check-in was a previous day */
-  function maybeReset() {
-    const c = loadCheckin();
-    if (c && c.date !== today()) {
+  function currentDay() {
+    return localStorage.getItem(KEY_DAY) || today();
+  }
+
+  /* Save the current day into History. Runs after every tick, edit and check-in. */
+  function record() {
+    const day  = currentDay();
+    const hist = readJSON(KEY_HISTORY, {});
+    const c    = loadCheckin();
+    const rating = c && c.date === day ? c.rating : null;
+    const done   = habits.filter(h => h.done).map(h => h.name);
+    const missed = habits.filter(h => !h.done).map(h => h.name);
+    if (!done.length && rating === null) delete hist[day];
+    else hist[day] = { done, missed, rating };
+    writeJSON(KEY_HISTORY, hist);
+  }
+
+  /* Start a fresh day only once the day the ticks belong to is over */
+  function rollover() {
+    const t = today();
+    const day = localStorage.getItem(KEY_DAY);
+    if (!day) {                       // first run of this version: keep whatever is ticked now as today's
+      localStorage.setItem(KEY_DAY, t);
+      return false;
+    }
+    if (day < t) {
+      record();                       // make sure the finished day is saved before clearing
       habits = habits.map(h => ({ ...h, done: false }));
       persist();
+      localStorage.setItem(KEY_DAY, t);
+      return true;
     }
+    return false;
   }
 
   /* ── render ── */
   function renderDate() {
     document.getElementById('dateLabel').textContent =
-      new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+      parseDay(currentDay()).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
   }
 
   function renderHabits() {
@@ -359,11 +491,11 @@
     const area = document.getElementById('checkinArea');
     const c    = loadCheckin();
 
-    if (c && c.date === today()) {
+    if (c && c.date === currentDay()) {
       area.innerHTML = `
         <div class="done-card">
-          <div class="done-rating">${c.rating}<span style="font-size:22px;color:var(--muted)"> / 10</span></div>
-          <div class="done-sub">Checked in. See you tomorrow.</div>
+          <div class="done-rating">${c.rating}<span style="font-size:22px;color:var(--muted)"> of 10</span></div>
+          <div class="done-sub">Checked in. Saved to history.</div>
         </div>`;
       return;
     }
@@ -380,11 +512,114 @@
       </div>`;
   }
 
+  function dayLabel(day) {
+    if (day === currentDay()) return 'Today';
+    return parseDay(day).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+  }
+
+  function renderHistory() {
+    const hist = readJSON(KEY_HISTORY, {});
+    const days = Object.keys(hist).sort().reverse();
+    const list = document.getElementById('histList');
+    const t    = currentDay();
+
+    if (!days.length) {
+      list.innerHTML = '<div class="empty">Nothing saved yet. Every day you tick lands here automatically.</div>';
+      document.getElementById('moreBtn').style.display = 'none';
+      return;
+    }
+
+    list.innerHTML = days.slice(0, shown).map(day => {
+      const r = hist[day];
+      const total = r.done.length + r.missed.length;
+      const dots = r.done.map(() => '<span class="dot on"></span>').join('') +
+                   r.missed.map(() => '<span class="dot"></span>').join('');
+      const rating = r.rating !== null
+        ? `<span class="hist-rating">${r.rating}</span>`
+        : `<span class="hist-rating none">no rating</span>`;
+      return `
+        <div class="hist-item${day === t ? ' today' : ''}${openDays.has(day) ? ' open' : ''}" onclick="toggleDay('${day}')">
+          <div class="hist-row">
+            <span class="hist-date">${dayLabel(day)}</span>
+            <span class="hist-dots">${dots}</span>
+            <span class="hist-count">${r.done.length} of ${total}</span>
+            ${rating}
+          </div>
+          <div class="hist-detail">
+            ${r.done.length   ? `<div><b>Done:</b> ${r.done.map(esc).join(', ')}</div>` : ''}
+            ${r.missed.length ? `<div><b>Missed:</b> ${r.missed.map(esc).join(', ')}</div>` : ''}
+            ${r.rating !== null ? `<div><b>Day rating:</b> ${r.rating} of 10</div>` : ''}
+          </div>
+        </div>`;
+    }).join('');
+
+    document.getElementById('moreBtn').style.display = days.length > shown ? '' : 'none';
+  }
+
+  function renderAll() {
+    renderDate();
+    renderHabits();
+    renderCheckin();
+    renderHistory();
+  }
+
   /* ── interactions ── */
   function toggle(id) {
+    const newDay = rollover();   // app left open overnight: the tap counts for the new day
     habits = habits.map(h => h.id === id ? { ...h, done: !h.done } : h);
     persist();
-    renderHabits();
+    record();
+    if (newDay) renderAll();
+    else { renderHabits(); renderHistory(); }
+  }
+
+  function toggleDay(day) {
+    if (openDays.has(day)) openDays.delete(day); else openDays.add(day);
+    renderHistory();
+  }
+
+  function showMore() {
+    shown += PAGE;
+    renderHistory();
+  }
+
+  function copyLog() {
+    const hist = readJSON(KEY_HISTORY, {});
+    const days = Object.keys(hist).sort().reverse();
+    const lines = ['Daily habits log'].concat(days.map(day => {
+      const r = hist[day];
+      const total = r.done.length + r.missed.length;
+      const name = parseDay(day).toLocaleDateString('en-GB', { weekday: 'long' });
+      let s = `${day} ${name}: ${r.done.length} of ${total} done`;
+      if (r.done.length)   s += ` (${r.done.join(', ')})`;
+      if (r.missed.length) s += `. Missed: ${r.missed.join(', ')}`;
+      s += r.rating !== null ? `. Day rating ${r.rating} of 10.` : '. No rating.';
+      return s;
+    }));
+    copyText(lines.join('\n'), document.getElementById('copyBtn'));
+  }
+
+  function copyText(text, btn) {
+    const done = () => {
+      btn.textContent = 'Copied';
+      btn.classList.add('ok');
+      setTimeout(() => { btn.textContent = 'Copy log'; btn.classList.remove('ok'); }, 1600);
+    };
+    const fallback = () => {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); } catch (e) {}
+      document.body.removeChild(ta);
+      done();
+    };
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(text).then(done, fallback);
+    } else fallback();
   }
 
   function startEdit() {
@@ -405,7 +640,9 @@
     document.getElementById('addRow').classList.remove('visible');
     document.getElementById('addInput').value = '';
     persist();
+    record();
     renderHabits();
+    renderHistory();
   }
 
   function cancelEdit() {
@@ -441,20 +678,22 @@
   }
 
   function submitCheckin() {
+    rollover();
     const rating = parseInt(document.getElementById('slider').value, 10);
     saveCheckin(rating);
-    habits = habits.map(h => ({ ...h, done: false }));
-    persist();
-    renderHabits();
-    renderCheckin();
+    record();          // ticks stay visible until the day ends at 04:00
+    renderAll();
   }
+
+  /* An iPhone home-screen app often resumes without reloading, so check the day on return too */
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && !editMode && rollover()) renderAll();
+  });
 
   /* ── init ── */
   loadHabits();
-  maybeReset();
-  renderDate();
-  renderHabits();
-  renderCheckin();
+  rollover();
+  renderAll();
 </script>
 </body>
 </html>
